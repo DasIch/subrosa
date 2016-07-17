@@ -2,3 +2,6 @@ include *.rst
 include *.txt
 include tox.ini
 include .isort.cfg
+include *.py
+include .coveragerc
+include conftest.py

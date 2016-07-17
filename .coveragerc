@@ -1,0 +1,11 @@
+[run]
+branch = True
+source = subrosa.py
+
+[paths]
+source =
+  subrosa.py
+  .tox/*/lib/python*/site-packages/subrosa.py
+
+[report]
+show_missing = True
