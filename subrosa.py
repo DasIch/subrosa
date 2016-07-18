@@ -6,7 +6,6 @@
     :license: BSD, see LICENSE.rst for details
 """
 import struct
-from itertools import chain
 from random import SystemRandom
 
 from gf256 import GF256
@@ -65,38 +64,45 @@ class _Share:
     @classmethod
     def from_bytes(cls, bytestring):
         try:
-            version, threshold, len_points = struct.unpack(
-                '>BBB', bytestring[:3]
-            )
+            version = struct.unpack('>B', bytestring[:1])[0]
             if version != cls.version:
-                raise NotImplementedError('unsupported version')
-            coordinates = struct.unpack(
-                '>' + 'BB' * len_points,
-                bytestring[3:]
+                raise NotImplementedError(
+                    'unsupported version: {}'.format(version)
+                )
+            threshold, x, len_ys = struct.unpack(
+                '>BBB',
+                bytestring[1:4]
             )
+            ys = struct.unpack('>' + 'B' * len_ys, bytestring[4:])
         except struct.error as exc:
             raise ValueError('invalid share format') from exc
-        points = list(zip(coordinates[::2], coordinates[1::2]))
-        return cls(threshold, points)
+        return cls(threshold, x, ys)
 
-    def __init__(self, threshold, points):
+    def __init__(self, threshold, x, ys):
         self.threshold = threshold
-        self.points = points
+        self.x = x
+        self.ys = ys
+
+    @property
+    def points(self):
+        return [(self.x, y) for y in self.ys]
 
     def is_compatible_with(self, other):
         return (
             self.version == other.version and
             self.threshold == other.threshold and
-            len(self.points) == len(other.points)
+            self.x != other.x and
+            len(self.ys) == len(other.ys)
         )
 
     def __bytes__(self):
         return struct.pack(
-            '>BBB' + 'BB' * len(self.points),
+            '>BBBB' + 'B' * len(self.ys),
             self.version,
             self.threshold,
-            len(self.points),
-            *chain.from_iterable(self.points)
+            self.x,
+            len(self.ys),
+            *self.ys
         )
 
 
@@ -129,12 +135,12 @@ def split_secret_bytes(secret, threshold, share_count):
     if not (threshold <= share_count < 256):
         raise ValueError('share_count out of range(threshold, 256)')
 
-    shares = [_Share(threshold, []) for _ in range(share_count)]
+    shares = [_Share(threshold, x, []) for x in range(1, share_count + 1)]
     for byte in secret:
         byte_shares = _split_secret_byte(byte, threshold, share_count)
         assert len(byte_shares) == share_count
-        for share, byte_share in zip(shares, byte_shares):
-            share.points.append(byte_share)
+        for share, (_, y) in zip(shares, byte_shares):
+            share.ys.append(y)
     return [bytes(share) for share in shares]
 
 
