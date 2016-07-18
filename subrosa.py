@@ -5,14 +5,14 @@
     :copyright: 2016 by Daniel Neuhäuser
     :license: BSD, see LICENSE.rst for details
 """
+import struct
+from itertools import chain
 from random import SystemRandom
 
 from gf256 import GF256
 
-
 __version__ = '0.1.0'
 __version_info__ = (0, 1, 0)
-
 
 _random = SystemRandom()
 
@@ -56,4 +56,118 @@ def _recover_secret_byte(shares):
     return int(_lagrange_interpolation(
         [(GF256(x), GF256(y)) for x, y in shares],
         GF256(0))
+    )
+
+
+class _Share:
+    version = 1
+
+    @classmethod
+    def from_bytes(cls, bytestring):
+        try:
+            version, threshold, len_points = struct.unpack(
+                '>BBB', bytestring[:3]
+            )
+            if version != cls.version:
+                raise NotImplementedError('unsupported version')
+            coordinates = struct.unpack(
+                '>' + 'BB' * len_points,
+                bytestring[3:]
+            )
+        except struct.error as exc:
+            raise ValueError('invalid share format') from exc
+        points = list(zip(coordinates[::2], coordinates[1::2]))
+        return cls(threshold, points)
+
+    def __init__(self, threshold, points):
+        self.threshold = threshold
+        self.points = points
+
+    def is_compatible_with(self, other):
+        return (
+            self.version == other.version and
+            self.threshold == other.threshold and
+            len(self.points) == len(other.points)
+        )
+
+    def __bytes__(self):
+        return struct.pack(
+            '>BBB' + 'BB' * len(self.points),
+            self.version,
+            self.threshold,
+            len(self.points),
+            *chain.from_iterable(self.points)
+        )
+
+
+def split_secret_bytes(secret, threshold, share_count):
+    """
+    Splits up the `secret`, a byte string, into `share_count` shares from which
+    the `secret` can be recovered with at least `threshold` shares.
+
+    Returns a list of byte strings, each representing on share. Every share is
+    slightly larger than the secret (same length + some constant overhead.)
+
+    :param secret:
+        The secret byte string to be split up.
+
+    :param threshold:
+        The number of shares shall be needed to recover the secret. This value
+        must be in the range `2 <= threshold < 256`.
+
+    :param share_count:
+        The number of shares to be returned. This value must be in the range
+        `threshold <= share_count < 256`.
+
+    A :exc:`ValueError` will be raised, if `secret` is an empty string or if
+    `threshold` or `share_count` has a value outside of the allowed range.
+    """
+    if not secret:
+        raise ValueError("can't split empty secret")
+    if not 2 <= threshold < 256:
+        raise ValueError('threshold out of range(2, 256)')
+    if not (threshold <= share_count < 256):
+        raise ValueError('share_count out of range(threshold, 256)')
+
+    shares = [_Share(threshold, []) for _ in range(share_count)]
+    for byte in secret:
+        byte_shares = _split_secret_byte(byte, threshold, share_count)
+        assert len(byte_shares) == share_count
+        for share, byte_share in zip(shares, byte_shares):
+            share.points.append(byte_share)
+    return [bytes(share) for share in shares]
+
+
+def recover_secret_bytes(shares):
+    """
+    Recovers a secret from the given `shares`, provided at least as many as
+    threshold shares are provided.
+
+    If not enough shares are provided, the shares are incompatible (cannot
+    possibly refer to the same secret), or in a wrong format, a
+    :exc:`ValueError` is raised.
+    """
+    try:
+        shares = [_Share.from_bytes(share) for share in shares]
+    except NotImplementedError as exc:
+        raise ValueError('unsupported share format') from exc
+    except ValueError as exc:
+        raise ValueError('share corrupted') from exc
+
+    if not shares:
+        raise ValueError('insufficient number of shares')
+
+    first = shares[0]
+    if not all(first.is_compatible_with(share) for share in shares[1:]):
+        raise ValueError('incompatible shares')
+    if first.threshold > len(shares):
+        raise ValueError(
+            'insufficient number of shares, {} shares required'.format(
+                first.threshold
+            )
+        )
+
+    return bytes(
+        _recover_secret_byte(byte_share)
+        for byte_share in zip(*(share.points for share in shares))
     )

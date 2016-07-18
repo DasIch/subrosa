@@ -7,23 +7,28 @@
 """
 import os
 
-import hypothesis
+import pytest
 
 
-if os.environ.get('CI', 'false') == 'true':
-    ENVIRONMENT = 'CI'
-elif os.environ.get('TOX', 'false') == 'true':
-    ENVIRONMENT = 'TOX'
-else:
-    ENVIRONMENT = 'DEV'
+RUNNING_ON_CI = os.environ.get('CI', 'false') == 'true'
 
 
-hypothesis.settings.register_profile('slow_test', {
-    'DEV': hypothesis.settings(max_examples=5, timeout=-1),
-    'TOX': hypothesis.settings(max_examples=10, timeout=-1),
-    'CI': hypothesis.settings(timeout=-1)
-}[ENVIRONMENT])
+def pytest_addoption(parser):
+    parser.addoption(
+        '--all', action='store_true', default=False,
+        help='Run all tests'
+    )
 
 
-def pytest_report_header(config, startdir):
-    return 'environment: {}'.format(ENVIRONMENT)
+def pytest_configure(config):
+    config.addinivalue_line(
+        'markers',
+        'ci_only: mark test to only run in CI'
+    )
+
+
+def pytest_runtest_setup(item):
+    slow_marker = item.get_marker('ci_only')
+    run_all_tests = item.config.getoption('--all')
+    if slow_marker is not None and not (RUNNING_ON_CI or run_all_tests):
+        pytest.skip('ci_only test skipped during local testing')

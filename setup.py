@@ -10,7 +10,6 @@ from pathlib import Path
 
 from setuptools import setup
 
-
 PROJECT_PATH = Path(__file__).parent.absolute()
 _version_re = re.compile("__version__ = '(\d+\.\d+\.\d+)'")
 
