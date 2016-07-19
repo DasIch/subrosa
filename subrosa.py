@@ -125,7 +125,7 @@ class Share:
         )
 
 
-def split_secret_bytes(secret, threshold, share_count):
+def split_secret(secret, threshold, share_count):
     """
     Splits up the `secret`, a byte string, into `share_count` shares from which
     the `secret` can be recovered with at least `threshold` shares.
@@ -162,7 +162,7 @@ def split_secret_bytes(secret, threshold, share_count):
     return shares
 
 
-def recover_secret_bytes(shares):
+def recover_secret(shares):
     """
     Recovers a secret from the given `shares`, provided at least as many as
     threshold shares are provided.
