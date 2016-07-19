@@ -11,7 +11,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis.strategies import binary, composite, integers, random_module
 
-from subrosa import recover_secret_bytes, split_secret_bytes
+from subrosa import Share, recover_secret_bytes, split_secret_bytes
 
 
 @composite
@@ -47,6 +47,31 @@ def test_secret_bytes(_, secret, threshold_and_number_of_shares):
     assert recovered_secret == secret
 
 
+class TestShare:
+    def test_from_bytes(self):
+        share = Share(2, 1, [2])
+        binary = bytes(share)
+        parsed_share = Share.from_bytes(binary)
+        assert parsed_share.version == 1
+        assert parsed_share._threshold == 2
+        assert parsed_share._x == 1
+        assert parsed_share._ys == [2]
+
+    def test_from_bytes_invalid_version(self):
+        share = Share(2, 1, [2])
+        share.version = 0
+        binary = bytes(share)
+        with pytest.raises(NotImplementedError):
+            Share.from_bytes(binary)
+
+    def test_from_bytes_invalid_format(self):
+        share = Share(2, 1, [2])
+        binary = bytes(share)
+        invalid_binary = binary[:-1]
+        with pytest.raises(ValueError):
+            Share.from_bytes(invalid_binary)
+
+
 class TestSplitSecretBytes:
     def test_empty_secret(self):
         with pytest.raises(ValueError):
@@ -73,18 +98,6 @@ class TestRecoverSecretBytes:
     def test_empty_shares(self):
         with pytest.raises(ValueError):
             recover_secret_bytes([])
-
-    def test_unsupported_version(self):
-        shares = split_secret_bytes(b'a', 2, 3)
-        shares[0] = b'\x00' + shares[0][1:]
-        with pytest.raises(ValueError):
-            recover_secret_bytes(shares)
-
-    def test_incomplete_share(self):
-        shares = split_secret_bytes(b'a', 2, 3)
-        shares[0] = shares[0][:-1]
-        with pytest.raises(ValueError):
-            recover_secret_bytes(shares)
 
     def test_incompatible_shares_secret(self):
         shares_a = split_secret_bytes(b'a', 2, 3)

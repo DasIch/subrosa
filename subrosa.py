@@ -58,11 +58,28 @@ def _recover_secret_byte(shares):
     )
 
 
-class _Share:
+class Share:
+    """
+    Represents a share of a secret.
+
+    Can be turned into a byte string using :func:`bytes`. Use this along with
+    :meth:`from_bytes` to store shares.
+    """
     version = 1
 
     @classmethod
     def from_bytes(cls, bytestring):
+        """
+        Returns a `Share` instance given a byte string representation of a
+        share.
+
+        This method will raise a :exc:`NotImplementedError`, if the byte string
+        was generated with a newer version of this library (or the byte string
+        is not a valid share.)
+
+        This method will raise a :exc:`ValueError`, if the byte string is not
+        a valid share.
+        """
         try:
             version = struct.unpack('>B', bytestring[:1])[0]
             if version != cls.version:
@@ -73,38 +90,38 @@ class _Share:
                 '>BB',
                 bytestring[1:3]
             )
-            ys = struct.unpack(
-                '>' + 'B' * (len(bytestring) - 3),
+            ys = list(struct.unpack(
+                '>B' + 'B' * (len(bytestring) - 4),
                 bytestring[3:]
-            )
+            ))
         except struct.error as exc:
             raise ValueError('invalid share format') from exc
         return cls(threshold, x, ys)
 
     def __init__(self, threshold, x, ys):
-        self.threshold = threshold
-        self.x = x
-        self.ys = ys
+        self._threshold = threshold
+        self._x = x
+        self._ys = ys
 
     @property
-    def points(self):
-        return [(self.x, y) for y in self.ys]
+    def _points(self):
+        return [(self._x, y) for y in self._ys]
 
-    def is_compatible_with(self, other):
+    def _is_compatible_with(self, other):
         return (
             self.version == other.version and
-            self.threshold == other.threshold and
-            self.x != other.x and
-            len(self.ys) == len(other.ys)
+            self._threshold == other._threshold and
+            self._x != other._x and
+            len(self._ys) == len(other._ys)
         )
 
     def __bytes__(self):
         return struct.pack(
-            '>BBB' + 'B' * len(self.ys),
+            '>BBB' + 'B' * len(self._ys),
             self.version,
-            self.threshold,
-            self.x,
-            *self.ys
+            self._threshold,
+            self._x,
+            *self._ys
         )
 
 
@@ -113,8 +130,7 @@ def split_secret_bytes(secret, threshold, share_count):
     Splits up the `secret`, a byte string, into `share_count` shares from which
     the `secret` can be recovered with at least `threshold` shares.
 
-    Returns a list of byte strings, each representing on share. Every share is
-    slightly larger than the secret (same length + some constant overhead.)
+    Returns a list of :class:`Share` objects, each representing a share.
 
     :param secret:
         The secret byte string to be split up.
@@ -137,13 +153,13 @@ def split_secret_bytes(secret, threshold, share_count):
     if not (threshold <= share_count < 256):
         raise ValueError('share_count out of range(threshold, 256)')
 
-    shares = [_Share(threshold, x, []) for x in range(1, share_count + 1)]
+    shares = [Share(threshold, x, []) for x in range(1, share_count + 1)]
     for byte in secret:
         byte_shares = _split_secret_byte(byte, threshold, share_count)
         assert len(byte_shares) == share_count
         for share, (_, y) in zip(shares, byte_shares):
-            share.ys.append(y)
-    return [bytes(share) for share in shares]
+            share._ys.append(y)
+    return shares
 
 
 def recover_secret_bytes(shares):
@@ -151,31 +167,23 @@ def recover_secret_bytes(shares):
     Recovers a secret from the given `shares`, provided at least as many as
     threshold shares are provided.
 
-    If not enough shares are provided, the shares are incompatible (cannot
-    possibly refer to the same secret), or in a wrong format, a
-    :exc:`ValueError` is raised.
+    If not enough shares are provided or the shares are incompatible (cannot
+    possibly refer to the same secret) a :exc:`ValueError` is raised.
     """
-    try:
-        shares = [_Share.from_bytes(share) for share in shares]
-    except NotImplementedError as exc:
-        raise ValueError('unsupported share format') from exc
-    except ValueError as exc:
-        raise ValueError('share corrupted') from exc
-
     if not shares:
         raise ValueError('insufficient number of shares')
 
     first = shares[0]
-    if not all(first.is_compatible_with(share) for share in shares[1:]):
+    if not all(first._is_compatible_with(share) for share in shares[1:]):
         raise ValueError('incompatible shares')
-    if first.threshold > len(shares):
+    if first._threshold > len(shares):
         raise ValueError(
             'insufficient number of shares, {} shares required'.format(
-                first.threshold
+                first._threshold
             )
         )
 
     return bytes(
         _recover_secret_byte(byte_share)
-        for byte_share in zip(*(share.points for share in shares))
+        for byte_share in zip(*(share._points for share in shares))
     )
