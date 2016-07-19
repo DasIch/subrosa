@@ -58,6 +58,11 @@ def _recover_secret_byte(shares):
     )
 
 
+def _add_share_byte(shares, x):
+    points = [(GF256(x), GF256(y)) for x, y in shares]
+    return int(_lagrange_interpolation(points, GF256(x)))
+
+
 class Share:
     """
     Represents a share of a secret.
@@ -100,18 +105,20 @@ class Share:
 
     def __init__(self, threshold, x, ys):
         self._threshold = threshold
-        self._x = x
+        #: The number (X coordinate of the underlying points) that identifies
+        #: this share.
+        self.x = x
         self._ys = ys
 
     @property
     def _points(self):
-        return [(self._x, y) for y in self._ys]
+        return [(self.x, y) for y in self._ys]
 
     def _is_compatible_with(self, other):
         return (
             self.version == other.version and
             self._threshold == other._threshold and
-            self._x != other._x and
+            self.x != other.x and
             len(self._ys) == len(other._ys)
         )
 
@@ -120,7 +127,7 @@ class Share:
             '>BBB' + 'B' * len(self._ys),
             self.version,
             self._threshold,
-            self._x,
+            self.x,
             *self._ys
         )
 
@@ -162,14 +169,7 @@ def split_secret(secret, threshold, share_count):
     return shares
 
 
-def recover_secret(shares):
-    """
-    Recovers a secret from the given `shares`, provided at least as many as
-    threshold shares are provided.
-
-    If not enough shares are provided or the shares are incompatible (cannot
-    possibly refer to the same secret) a :exc:`ValueError` is raised.
-    """
+def _validate_shares(shares):
     if not shares:
         raise ValueError('insufficient number of shares')
 
@@ -183,7 +183,60 @@ def recover_secret(shares):
             )
         )
 
+
+def recover_secret(shares):
+    """
+    Recovers a secret from the given `shares`, provided at least as many as
+    threshold shares are provided.
+
+    If not enough shares are provided or the shares are incompatible (cannot
+    possibly refer to the same secret) a :exc:`ValueError` is raised.
+    """
+    _validate_shares(shares)
     return bytes(
         _recover_secret_byte(byte_share)
         for byte_share in zip(*(share._points for share in shares))
+    )
+
+
+def add_share(shares, x):
+    """
+    Returns a new (or reconstructed) share for an already shared secret.
+
+    Assuming you've split up some secret into three shares, these shares will
+    be the shares `1`, `2` and `3`:
+
+    >>> shares = split_secret(b'secret', 2, 3)
+    >>> [share.x for share in shares]
+    [1, 2, 3]
+
+    You can then create a new fourth share or recreate a share you may have
+    lost:
+
+    >>> add_share(shares, 4).x
+    4
+    >>> add_share(shares[1:], 1).x
+    1
+
+    Take care to keep track of which shares are in circulation, to make sure
+    that you're generating shares that are actually new.
+
+    :param x:
+        The share to be returned. This value must be in the range
+        `1 <= x < 256`.
+
+    If not enough shares are provided (as defined by the threshold when
+    splitting the secret) or the shares are incompatible (don't refer to the
+    same secret) a :exc:`ValueError` is raised.
+    """
+    _validate_shares(shares)
+    if not (1 <= x < 256):
+        raise ValueError('x not in range(1, 256)')
+    return Share(
+        shares[0]._threshold,
+        x,
+        [
+            _add_share_byte(byte_share, x)
+            for byte_share in zip(*(share._points for share in shares))
+        ]
     )

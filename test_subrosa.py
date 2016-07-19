@@ -11,7 +11,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis.strategies import binary, composite, integers, random_module
 
-from subrosa import Share, recover_secret, split_secret
+from subrosa import Share, add_share, recover_secret, split_secret
 
 
 @composite
@@ -68,7 +68,7 @@ class TestShare:
         parsed_share = Share.from_bytes(binary)
         assert parsed_share.version == 1
         assert parsed_share._threshold == 2
-        assert parsed_share._x == 1
+        assert parsed_share.x == 1
         assert parsed_share._ys == [2]
 
     def test_from_bytes_invalid_version(self):
@@ -129,3 +129,36 @@ class TestRecoverSecret:
         shares = split_secret(b'a', 2, 2)
         with pytest.raises(ValueError):
             recover_secret(shares[:1])
+
+
+class TestAddShare:
+    def test_new_share(self):
+        shares = split_secret(b'secret', 2, 2)
+        third_share = add_share(shares, 3)
+        for share in shares:
+            recovered_secret = recover_secret([share, third_share])
+            assert recovered_secret == b'secret'
+
+    def test_recreate_share(self):
+        shares = split_secret(b'secret', 2, 2)
+        for i, share in enumerate(shares, 1):
+            recreated_share = add_share(shares, i)
+            assert recreated_share._ys == share._ys
+
+    def test_x_equals_0(self):
+        """
+        Make sure we don't leak the secret (which is at 0.)
+        """
+        shares = split_secret(b'secret', 2, 2)
+        with pytest.raises(ValueError):
+            add_share(shares, 0)
+
+    def test_x_less_than_0(self):
+        shares = split_secret(b'secret', 2, 2)
+        with pytest.raises(ValueError):
+            add_share(shares, -1)
+
+    def test_x_greater_than_255(self):
+        shares = split_secret(b'secret', 2, 2)
+        with pytest.raises(ValueError):
+            add_share(shares, 256)
