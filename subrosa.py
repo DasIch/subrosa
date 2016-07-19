@@ -105,8 +105,6 @@ class Share:
 
     def __init__(self, threshold, x, ys):
         self._threshold = threshold
-        #: The number (X coordinate of the underlying points) that identifies
-        #: this share.
         self.x = x
         self._ys = ys
 

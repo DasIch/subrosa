@@ -8,6 +8,7 @@ env:
   - TOXENV=py35
   - TOXENV=packaging
   - TOXENV=style
+  - TOXENV=docs
 
 install:
   - pip install tox codecov

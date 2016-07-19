@@ -5,3 +5,7 @@ include .isort.cfg
 include *.py
 include .coveragerc
 include conftest.py
+recursive-include docs *.gitkeep
+recursive-include docs *.py
+recursive-include docs *.rst
+recursive-include docs Makefile
