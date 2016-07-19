@@ -21,13 +21,17 @@ def threshold_and_shares(draw):
     return threshold, shares
 
 
-def test_secret_bytes_fast():
-    shares = split_secret_bytes(b'secret', 2, 3)
+@pytest.mark.parametrize('secret', [
+    b'secret',
+    b'x' * 257
+])
+def test_secret_bytes_fast(secret):
+    shares = split_secret_bytes(secret, 2, 3)
     for i in range(2, 4):
         subset = random.sample(shares, i)
         random.shuffle(subset)
         recovered_secret = recover_secret_bytes(subset)
-        assert recovered_secret == b'secret'
+        assert recovered_secret == secret
 
 
 @pytest.mark.ci_only

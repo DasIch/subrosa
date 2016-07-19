@@ -69,11 +69,14 @@ class _Share:
                 raise NotImplementedError(
                     'unsupported version: {}'.format(version)
                 )
-            threshold, x, len_ys = struct.unpack(
-                '>BBB',
-                bytestring[1:4]
+            threshold, x = struct.unpack(
+                '>BB',
+                bytestring[1:3]
             )
-            ys = struct.unpack('>' + 'B' * len_ys, bytestring[4:])
+            ys = struct.unpack(
+                '>' + 'B' * (len(bytestring) - 3),
+                bytestring[3:]
+            )
         except struct.error as exc:
             raise ValueError('invalid share format') from exc
         return cls(threshold, x, ys)
@@ -97,11 +100,10 @@ class _Share:
 
     def __bytes__(self):
         return struct.pack(
-            '>BBBB' + 'B' * len(self.ys),
+            '>BBB' + 'B' * len(self.ys),
             self.version,
             self.threshold,
             self.x,
-            len(self.ys),
             *self.ys
         )
 
