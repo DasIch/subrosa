@@ -21,23 +21,19 @@ def threshold_and_shares(draw):
     return threshold, shares
 
 
-@pytest.mark.parametrize('secret', [
-    b'secret',
-    b'x' * 257
-])
-def test_split_and_recover_fast(secret):
-    shares = split_secret(secret, 2, 3)
-    for i in range(2, 4):
-        subset = random.sample(shares, i)
-        random.shuffle(subset)
-        recovered_secret = recover_secret(subset)
-        assert recovered_secret == secret
-
-
 @pytest.mark.ci_only
 @given(random_module(), binary(min_size=1), threshold_and_shares())
 @settings(timeout=-1, max_examples=5)
 def test_split_and_recover(_, secret, threshold_and_number_of_shares):
+    """
+    Tests whether the secret can be split and recovered for some random secret,
+    threshold and share. This can take a long time to run (several minutes),
+    for large thresholds or shares. For this reason this test is only executed
+    when running on continous integration by default.
+
+    Take a look at `test_split_and_recover_fast`, which always runs for a fast
+    version of this test.
+    """
     threshold, number_of_shares = threshold_and_number_of_shares
 
     shares = split_secret(secret, threshold, number_of_shares)
@@ -45,6 +41,24 @@ def test_split_and_recover(_, secret, threshold_and_number_of_shares):
     random.shuffle(subset)
     recovered_secret = recover_secret(subset)
     assert recovered_secret == secret
+
+
+@pytest.mark.parametrize('secret', [
+    b'secret',
+    b'x' * 257
+])
+def test_split_and_recover_fast(secret):
+    """
+    Tests quickly whether the secret can be split and recovered. This test is
+    not as exhaustive as `test_split_and_recover` but it hopefully still
+    catches anything too obvious during local development.
+    """
+    shares = split_secret(secret, 2, 3)
+    for i in range(2, 4):
+        subset = random.sample(shares, i)
+        random.shuffle(subset)
+        recovered_secret = recover_secret(subset)
+        assert recovered_secret == secret
 
 
 class TestShare:
